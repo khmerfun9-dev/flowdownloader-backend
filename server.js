@@ -24,6 +24,7 @@ app.use('/api/', limiter);
 // CORS configuration
 const allowedOrigins = [
   'http://localhost:5173',
+  'https://flowdownloader.vercel.app',
   'https://web-jq0iazn32-khmerfun9-dev9s-projects.vercel.app',
   'https://web-mjpvsb2q4-khmerfun9-dev9s-projects.vercel.app',
   'https://web-7tw0nyhf9-khmerfun9-dev9s-projects.vercel.app'
