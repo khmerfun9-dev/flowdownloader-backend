@@ -76,10 +76,22 @@ router.get('/progress/:jobId', (req, res) => {
       });
     }
     
-    res.json({
+    // Format response to match frontend expectations
+    const response = {
       success: true,
-      job
-    });
+      progress: job.progress || 0,
+      status: job.status,
+      error: job.error
+    };
+    
+    // Add download URL and filename when completed
+    if (job.status === 'completed' && job.outputFile) {
+      response.downloadUrl = `/api/download/file/${jobId}`;
+      response.filename = path.basename(job.outputFile);
+      response.fileSize = job.fileSize;
+    }
+    
+    res.json(response);
     
   } catch (error) {
     console.error('Progress check error:', error);
@@ -291,32 +303,51 @@ async function downloadVideo(jobId, url, format, quality, outputDir) {
       }
     }
     
-    // Execute download using execPromise
+    // Execute download with progress tracking
     try {
+      // Update progress periodically during download
+      const progressTimer = setInterval(() => {
+        const currentJob = downloadJobs.get(jobId);
+        if (currentJob && currentJob.status === 'downloading') {
+          // Simulate progress increase (yt-dlp doesn't provide real-time progress easily)
+          const elapsed = Date.now() - currentJob.startTime;
+          const estimatedProgress = Math.min(90, Math.floor(elapsed / 1000) * 2); // 2% per second, max 90%
+          downloadJobs.set(jobId, {
+            ...currentJob,
+            progress: estimatedProgress
+          });
+        }
+      }, 1000);
+      
       await ytDlpWrap.execPromise([url], options);
+      clearInterval(progressTimer);
+      
     } catch (error) {
       throw new Error(`yt-dlp failed: ${error.message}`);
     }
     
-    // Find the downloaded file (look for any files in the directory)
+    // Find the downloaded file
     const allFiles = fs.readdirSync(outputDir);
-    const files = allFiles.filter(file => {
+    const downloadedFiles = allFiles.filter(file => {
       const filePath = path.join(outputDir, file);
       const stats = fs.statSync(filePath);
-      return stats.isFile();
+      return stats.isFile() && file.includes(jobId);
     });
     
-    if (files.length === 0) {
+    if (downloadedFiles.length === 0) {
       throw new Error('Downloaded file not found');
     }
     
-    const outputFile = path.join(outputDir, files[0]);
+    const outputFile = path.join(outputDir, downloadedFiles[0]);
+    const fileStats = fs.statSync(outputFile);
+    const fileSize = fileStats.size;
     
-    // Update job status
+    // Update job status to completed
     downloadJobs.set(jobId, {
       ...downloadJobs.get(jobId),
       status: 'completed',
       outputFile,
+      fileSize,
       endTime: Date.now(),
       progress: 100
     });
